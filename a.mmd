@@ -1,0 +1,55 @@
+flowchart TD
+    %% 样式定义：突出高并发核心模块
+    classDef trigger fill:#e6f7ff,stroke:#0066cc,stroke-width:1px;
+    classDef core fill:#fff3cd,stroke:#fd7e14,stroke-width:2px;  %% 核心并发组件
+    classDef resource fill:#d1f5e0,stroke:#2ecc71,stroke-width:1px;  %% 资源池
+    classDef monitor fill:#f8d7da,stroke:#e74c3c,stroke-width:1px;  %% 监控扩容
+
+    %% 1. 触发层：高并发请求入口
+    subgraph 触发源集群
+        A[代码提交]:::trigger
+        B[定时任务]:::trigger
+        C[Webhook]:::trigger
+        D[API调用]:::trigger
+    end
+    A & B & C & D --> E[负载均衡集群<br><small>3实例 · 10000+ 请求/分钟</small>]:::trigger
+
+    %% 2. 事件监听层：线程池+横向扩容
+    E --> F[事件监听服务<br><small>5~10实例弹性扩容<br>线程池(200线程/实例) · 2000事件/秒</small>]:::core
+
+    %% 3. 调度层：任务分发与优先级管控
+    F --> G[调度中心<br><small>8~15实例弹性扩容<br>线程池(300线程/实例) · 优先级队列</small>]:::core
+
+    %% 4. 执行层：Worker池无限扩容（核心并发载体）
+    G -->|构建任务| H[构建Worker池<br><small>200~500节点 · 单节点5并发任务<br>总并发：2500任务/秒</small>]:::core
+    G -->|部署任务| I[部署Worker池<br><small>100~200节点 · 单节点3并发任务<br>总并发：600任务/秒</small>]:::core
+
+    %% 5. 并行任务可视化（突出上千并发的执行状态）
+    subgraph 构建任务并行执行（示例）
+        H --> H1[编译任务1]
+        H --> H2[编译任务2]
+        H --> H3[编译任务3]
+        H --> H4[...（省略2497个并行任务）]
+        H1 & H2 & H3 & H4 --> HResult[构建结果存储]
+    end
+    
+    subgraph 部署任务并行执行（示例）
+        I --> I1[部署服务A]
+        I --> I2[部署服务B]
+        I --> I3[...（省略598个并行任务）]
+        I1 & I2 & I3 --> IResult[部署状态同步]
+    end
+
+    %% 6. 资源池支撑：无限扩容的底层资源
+    H & I --> J[K8s节点池<br><small>20~100节点弹性扩容<br>支持Worker池无限扩展</small>]:::resource
+
+    %% 7. 监控与扩容链路：保障高并发稳定性
+    K[监控系统<br><small>实时采集：CPU/内存/队列长度</small>]:::monitor
+        -->|触发条件：<br>Worker负载>80% 或 队列堆积>2000| L[扩容控制器<br><small>K8s HPA + 自定义策略</small>]:::monitor
+    L -->|自动新增节点| H
+    L -->|自动新增节点| I
+    L -->|扩容底层资源| J
+
+    %% 并发能力总览
+    note[系统并发能力总结：<br>• 事件处理：2000事件/秒<br>• 任务执行：3100任务/秒（构建2500+部署600）<br>• 支持弹性扩容至5000+任务/秒（受集群资源限制）]
+    style note fill:#f8f9fa,stroke:#343a40,stroke-width:1px
